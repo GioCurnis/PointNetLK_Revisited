@@ -427,6 +427,23 @@ def find_classes(root):
     return classes, class_to_idx
 
 
+def glob_gtav(root, cinfo, ptn):
+    root = os.path.expanduser(root)
+    samples = []
+    for cls, idx in cinfo.items():
+        d = os.path.join(root, cls)
+        print(d)
+        if not os.path.isdir(d):
+            continue
+
+        gptn = os.path.join(d, ptn[0])
+        names = glob.glob(gptn)
+        for path in sorted(names):
+            item = (path, idx)
+            samples.append(item)
+
+    return samples
+
 def glob_dataset(root, class_to_idx, ptns):
     """ glob ${root}/${class}/${ptns[i]} """
     root = os.path.expanduser(root)
@@ -465,7 +482,8 @@ class Globset(torch.utils.data.Dataset):
         else:
             classes, class_to_idx = find_classes(rootdir)
 
-        samples = glob_dataset(rootdir, class_to_idx, pattern)
+        #samples = glob_dataset(rootdir, class_to_idx, pattern)
+        samples = glob_gtav(rootdir, class_to_idx, pattern)
         if not samples:
             raise RuntimeError("Empty: rootdir={}, pattern(s)={}".format(rootdir, pattern))
 
@@ -730,6 +748,14 @@ def objread(filepath, points_only=True):
 
     return mesh
 
+class PDC2Points:
+    def __init__(self):
+        pass
+
+    def __call__(self, pcd: o3d.PointCloud.PointCloud):
+        xyz = np.asarray(pcd.points)
+        return torch.from_numpy(xyz).type(dtype=torch.float)
+
 
 class Mesh2Points:
     def __init__(self):
@@ -762,6 +788,11 @@ class OnUnitCube:
         #return self.method1(tensor)
         return self.method2(tensor)
 
+class GTAV(Globset):
+    def __init__(self, dataset_path, transform=None, classinfo=None):
+        loader = o3d.read_point_cloud
+        pattern = "*.pcd"
+        super().__init__(rootdir=dataset_path, pattern=pattern, fileloader=loader, transform=transform, classinfo=classinfo)
 
 class ModelNet(Globset):
     """ [Princeton ModelNet](http://modelnet.cs.princeton.edu/) """

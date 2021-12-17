@@ -457,6 +457,3 @@ def test_metrics(rotations_gt, translation_gt, rotations_ab, translation_ab, fil
     print('********************median********************')
     print('rot_MSE: {}, rot_RMSE: {}, rot_MAE: {}, trans_MSE: {}, trans_RMSE: {}, trans_MAE: {}'.format(rot_mse_ab_02, 
             rot_rmse_ab_02, rot_mae_ab_02, trans_mse_ab_02, trans_rmse_ab_02, trans_mae_ab_02))
-
-    return
-

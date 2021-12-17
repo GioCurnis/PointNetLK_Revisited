@@ -9,6 +9,7 @@ import torchvision
 
 import data_utils
 import trainer
+from iralab_metric import calculate_error
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())
@@ -23,14 +24,14 @@ def options(argv=None):
     parser.add_argument('--dataset_path', type=str, default='./dataset/ThreeDMatch',
                         metavar='PATH', help='path to the input dataset')
     parser.add_argument('--categoryfile', type=str, default='./dataset/test_3dmatch.txt',
-                        metavar='PATH', choices=['./dataset/test_3dmatch.txt', './dataset/modelnet40_half2.txt'], 
+                        metavar='PATH', choices=['./dataset/test_3dmatch.txt', './dataset/modelnet40_half2.txt', './dataset/test_gtav.txt'],
                         help='path to the categories to be tested')
     parser.add_argument('--pose_file', type=str, default='./dataset/gt_poses.csv',
                         metavar='PATH', help='path to the testing pose files')
 
     # settings for input data
     parser.add_argument('--dataset_type', default='3dmatch', type=str,
-                        metavar='DATASET', choices=['modelnet', '3dmatch'], help='dataset type')
+                        metavar='DATASET', choices=['modelnet', '3dmatch', 'gtav'], help='dataset type')
     parser.add_argument('--data_type', default='real', type=str,
                         metavar='DATASET', help='whether data is synthetic or real')
     parser.add_argument('--num_points', default=1000, type=int,
@@ -77,7 +78,10 @@ def options(argv=None):
                         metavar='LOGNAME', help='path to logfile')
     parser.add_argument('--pretrained', default='./logs/model_trained_on_ModelNet40_model_best.pth', type=str,
                         metavar='PATH', help='path to pretrained model file ')
-    
+
+    parser.add_argument('--statistics', required=True, type=str,
+                        metavar='PATH')
+
     args = parser.parse_args(argv)
     return args
 
@@ -138,7 +142,16 @@ def get_datasets(args):
         testset = data_utils.ThreeDMatch_Testing(args.dataset_path, args.categoryfile, args.overlap_ratio, 
                                                  args.voxel_ratio, args.voxel, args.max_voxel_points, 
                                                  args.num_voxels, args.pose_file, args.vis)
-    
+
+    elif args.dataset_type == 'gtav':
+        transform = torchvision.transforms.Compose([\
+                    data_utils.PDC2Points(),\
+                    data_utils.OnUnitCube(),\
+                    data_utils.Resampler(args.num_points)])
+
+        testdata = data_utils.GTAV(args.dataset_path, transform=transform, classinfo=cinfo)
+        testset = data_utils.PointRegistration_fixed_perturbation(testdata, args.pose_file, sigma=args.sigma, clip=args.clip)
+
     return testset
 
     

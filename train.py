@@ -54,6 +54,8 @@ def options(argv=None):
                         metavar='N', help='max-iter on LK.')
 
     # settings for training.
+    parser.add_argument('--rate', default=0.1, type=float,
+                        metavar='F', help='train/validation rate')
     parser.add_argument('--batch_size', default=32, type=int,
                         metavar='N', help='mini-batch size')
     parser.add_argument('--max_epochs', default=200, type=int,
@@ -76,6 +78,9 @@ def options(argv=None):
                         metavar='PATH', help='path to latest checkpoint')
     parser.add_argument('--pretrained', default='', type=str,
                         metavar='PATH', help='path to pretrained model file')
+
+    parser.add_argument('--statistics', required=True, type=str,
+                        metavar='PATH')
 
     args = parser.parse_args(argv)
     return args
@@ -170,6 +175,22 @@ def get_datasets(args):
 
         trainset = data_utils.PointRegistration(traindata, data_utils.RandomTransformSE3(args.mag))
         evalset = data_utils.PointRegistration(evaldata, data_utils.RandomTransformSE3(args.mag))
+
+    elif args.dataset_type == 'gtav':
+        transform = torchvision.transforms.Compose([
+            data_utils.PDC2Points(),\
+            data_utils.OnUnitCube(),\
+            data_utils.Resampler(args.num_points)])
+
+        evaldata, traindata = data_utils.GTAV(args.dataset_path, transform, cinfo).split(args.rate)
+
+        print('Train Data: ', len(traindata))
+        print('Eval Data: ', len(evaldata))
+
+        trainset = data_utils.PointRegistration(traindata, data_utils.RandomTransformSE3(args.mag))
+        evalset = data_utils.PointRegistration(evaldata, data_utils.RandomTransformSE3(args.mag))
+
+
     else:
         print('wrong dataset type!')
 

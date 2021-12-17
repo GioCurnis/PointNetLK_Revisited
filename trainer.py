@@ -6,10 +6,11 @@ from scipy.spatial.transform import Rotation
 import tqdm
 import logging
 import open3d as o3d
-from open3d.web_visualizer import draw   # for notebook
+#from open3d.web_visualizer import draw   # for notebook
 
 import model
 import utils
+from iralab_metric import calculate_error
 
 
 LOGGER = logging.getLogger(__name__)
@@ -29,6 +30,8 @@ class TrainerAnalyticalPointNetLK:
         # network
         self.embedding = args.embedding
         self.filename = args.outfile
+
+        self.statistics = args.statistics
         
     def create_features(self):
         if self.embedding == 'pointnet':
@@ -90,6 +93,7 @@ class TrainerAnalyticalPointNetLK:
         translation_gt = []
         rotations_ab = []
         translation_ab = []
+        all_result = []
         
         for i, data in tqdm.tqdm(enumerate(testloader), total=len(testloader), ncols=73, leave=False):
             # if voxelization: VxNx3, Vx3, 1x4x4
@@ -156,12 +160,14 @@ class TrainerAnalyticalPointNetLK:
                     
                     if j == 0:
                         if toyexample:
-                            draw([pcd1, pcd2])
+                            print('draw')
+                            #draw([pcd1, pcd2])
                         else:
                             o3d.visualization.draw_geometries([pcd1, pcd2])
                     else:
                         if toyexample:
-                            draw([pcd0, pcd1])
+                            print('draw')
+                            #draw([pcd0, pcd1])
                         else:
                             o3d.visualization.draw_geometries([pcd0, pcd1])
                             
@@ -169,8 +175,22 @@ class TrainerAnalyticalPointNetLK:
                 dx = utils.log(dg)   # --> [1, 6] (if corerct, dx == zero vector)
                 dn = dx.norm(p=2, dim=1)   # --> [1]
                 dm = dn.mean()
+
+                pcd0 = o3d.PointCloud()
+                pcd1 = o3d.PointCloud()
+                p1_ = p1[0]
+                p0_ = utils.transform(estimated_pose, p1_.unsqueeze(0)).transpose(1, 2)[0]
+
+                xyz0 = p0_.detach().cpu().numpy()
+                xyz1 = p1_.detach().cpu().numpy()
+                #print(p1_.size())
+                pcd0.points = o3d.Vector3dVector(xyz0)
+                pcd1.points = o3d.Vector3dVector(xyz1)
+                ira = calculate_error(pcd0, pcd1)
+
+                all_result.append(ira)
                 
-                LOGGER.info('test, %d/%d, %d iterations, %f', i, len(testloader), j, dm)
+                LOGGER.info('test, %d/%d, %d iterations, %f, %f', i, len(testloader), j, dm, ira)
                     
             # euler representation for ground truth
             tform_gt = ig_gt.squeeze().numpy().transpose()
@@ -191,9 +211,23 @@ class TrainerAnalyticalPointNetLK:
             trans_ab = tform_ab[:3, 3]
             translation_ab.append(trans_ab)
 
+            arr = np.asarray(all_result)
+            median = np.median(arr)
+            mean = np.mean(arr)
+            std = np.std(arr)
+            q75 = np.quantile(arr, 0.75)
+            q95 = np.quantile(arr, 0.95)
+
+            with open(self.statistics, 'w') as fstat:
+                cols = ['median', '0.75Q', '0.95Q', 'mean', 'std']
+                vals = [median, q75, q95, mean, std]
+                print(','.join(map(str, cols)), file=fstat)
+                fstat.flush()
+                print(','.join(map(str, vals)), file=fstat)
+                fstat.flush()
+
         utils.test_metrics(rotations_gt, translation_gt, rotations_ab, translation_ab, self.filename)
-        
-        return 
+
 
     def compute_loss(self, ptnetlk, data, device, mode, data_type='synthetic', num_random_points=100):
         # 1. non-voxelization
@@ -213,8 +247,8 @@ class TrainerAnalyticalPointNetLK:
             voxel_coords_p1 = voxel_coords_p1.reshape(-1, voxel_coords_p1.shape[2]).to(device)
             gt_pose = gt_pose.reshape(-1, gt_pose.shape[2], gt_pose.shape[3]).to(device)
             
-            r = model.AnalyticalPointNetLK.do_forward(ptnetlk, voxel_features_p0_, voxel_coords_p0_,
-                    voxel_features_p1_, voxel_coords_p1_, self.max_iter, self.xtol, self.p0_zero_mean, self.p1_zero_mean, mode, data_type, num_random_points)
+            r = model.AnalyticalPointNetLK.do_forward(ptnetlk, voxel_features_p0, voxel_coords_p0,
+                    voxel_features_p1, voxel_coords_p1, self.max_iter, self.xtol, self.p0_zero_mean, self.p1_zero_mean, mode, data_type, num_random_points)
 
         estimated_pose = ptnetlk.g
 
